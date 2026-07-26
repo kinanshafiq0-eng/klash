@@ -87,7 +87,7 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ تم تعيين رتبة الإدارة والتحكم بنجاح إلى: ${targetRole.name}`);
     }
 
-    // 3. أمر تعيين روم اللوق: !setlog #channel
+    // 3. أمر تعيين روم اللوق: !setlog #channel (تم ضبطه وتحسينه)
     if (command === '!setlog') {
         if (!hasStaffPermission(message.member)) {
             return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية (رتبة التحكم غير متوفرة لديك).');
@@ -98,8 +98,9 @@ client.on('messageCreate', async message => {
             return message.reply('⚠️ يجب عليك عمل منشن للروم بشكل صحيح، مثال: `!setlog #logs`');
         }
 
+        // حفظ آيدي الروم في الذاكرة الخاصة بالسيرفر
         guildLogChannels.set(message.guild.id, targetChannel.id);
-        return message.reply(`✅ تم تعيين روم السجلات بنجاح إلى: ${targetChannel}`);
+        return message.reply(`✅ تم تعيين روم السجلات (اللوق) بنجاح إلى: ${targetChannel}`);
     }
 
     // 4. أمر إنشاء لوحة الحضور والتسجيل: !setup-login [رابط الصورة]
@@ -192,7 +193,7 @@ client.on('messageCreate', async message => {
     }
 });
 
-// نظام الأزرار وتسجيل الدخول والخروج التفاعلي
+// نظام الأزرار وتسجيل الدخول والخروج واللوق التلقائي
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
@@ -200,8 +201,12 @@ client.on('interactionCreate', async interaction => {
     const guild = interaction.guild;
     const now = Date.now();
     
+    // جلب روم اللوق الخاص بالسيرفر، وإذا لم يتم تعيينه يتم استخدام الروم الحالي
     const logChannelId = guildLogChannels.get(guild.id);
-    const logChannel = guild.channels.cache.get(logChannelId) || interaction.channel;
+    let logChannel = guild.channels.cache.get(logChannelId);
+    if (!logChannel) {
+        logChannel = interaction.channel;
+    }
 
     if (interaction.customId === 'btn_login') {
         if (activeLogins.has(user.id)) {
@@ -219,7 +224,11 @@ client.on('interactionCreate', async interaction => {
             )
             .setTimestamp();
 
-        try { await logChannel.send({ embeds: [logEmbed] }); } catch (e) {}
+        try { 
+            await logChannel.send({ embeds: [logEmbed] }); 
+        } catch (err) {
+            console.error('خطأ في إرسال لوق الدخول:', err);
+        }
 
         return interaction.reply({ content: '✅ تم تسجيل **دخولك** بنجاح. بالتوفيق في البث!', ephemeral: true });
     }
@@ -249,7 +258,11 @@ client.on('interactionCreate', async interaction => {
             )
             .setTimestamp();
 
-        try { await logChannel.send({ embeds: [logEmbed] }); } catch (e) {}
+        try { 
+            await logChannel.send({ embeds: [logEmbed] }); 
+        } catch (err) {
+            console.error('خطأ في إرسال لوق الخروج:', err);
+        }
 
         return interaction.reply({ 
             content: `✅ تم تسجيل **خروجك** بنجاح.\n⏱️ مدة هذه الجلسة: **${formatSeconds(sessionDurationSeconds)}**`, 
