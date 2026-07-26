@@ -17,14 +17,23 @@ const client = new Client({
     ]
 });
 
-// تخزين مؤقت لجلسات الدخول الحالية، الإحصائيات، وروم اللوق لكل سيرفر
+// تخزين مؤقت للبيانات لكل سيرفر
 const activeLogins = new Map(); 
 const userStats = new Map();     
 const guildLogChannels = new Map(); // تخزين آيدي روم اللوق لكل سيرفر
+const guildAllowedRoles = new Map(); // تخزين آيدي رتبة التحكم/المود المسموح لها بالأوامر
 
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}! Bot is ready and running.`);
 });
+
+// دالة التحقق مما إذا كان المستخدم يمتلك صلاحية (أدممن أو الرتبة المحددة)
+function hasStaffPermission(member) {
+    if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+    const allowedRoleId = guildAllowedRoles.get(member.guild.id);
+    if (allowedRoleId && member.roles.cache.has(allowedRoleId)) return true;
+    return false;
+}
 
 // الأوامر النصية
 client.on('messageCreate', async message => {
@@ -33,10 +42,55 @@ client.on('messageCreate', async message => {
     const args = message.content.trim().split(/ +/);
     const command = args[0].toLowerCase();
 
-    // 1. أمر تعيين روم اللوق: !setlog #channel
-    if (command === '!setlog') {
+    // 1. أمر المساعدة: !help
+    if (command === '!help') {
+        const embed = new EmbedBuilder()
+            .setTitle('📖 قائمة مساعدة بوت الحضور والوظائف')
+            .setColor('#9b59b6')
+            .setDescription('إليك جميع الأوامر المتاحة في البوت:')
+            .addFields(
+                { 
+                    name: '🛠️ أوامر الإدارة والتحكم (خاصة بالمشرفين):', 
+                    value: 
+                        '`!setrole @الرتبة` - تعيين رتبة التحكم/المود لوكلاء الإدارة.\n' +
+                        '`!setlog #الروم` - تحديد روم سجلات الحضور (اللوق).\n' +
+                        '`!setup-login [رابط الصورة]` - إرسال لوحة الحضور والتسجيل بالأزرار.',
+                    inline: false 
+                },
+                { 
+                    name: '👤 الأوامر العامة (متاحة للجميع):', 
+                    value: 
+                        '`!me` أو `!me @user` - عرض إحصائيات حضورك أو حضور شخص آخر.\n' +
+                        '`!top` - عرض قائمة المتصدرين لأكثر الحاضرين.\n' +
+                        '`!help` - إظهار هذه القائمة.',
+                    inline: false 
+                }
+            )
+            .setTimestamp()
+            .setFooter({ text: 'KLASH LOGIN SYSTEM' });
+
+        return message.reply({ embeds: [embed] });
+    }
+
+    // 2. أمر تعيين الرتبة المخولة بالتحكم (مود/مسؤول): !setrole @Role
+    if (command === '!setrole') {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية لاستخدام هذا الأمر.');
+            return message.reply('❌ عذراً، هذا الأمر مخصص لمسؤولي السيرفر (Administrator) فقط.');
+        }
+
+        const targetRole = message.mentions.roles.first();
+        if (!targetRole) {
+            return message.reply('⚠️ يجب عليك عمل منشن للرتبة بشكل صحيح، مثال: `!setrole @Moderator`');
+        }
+
+        guildAllowedRoles.set(message.guild.id, targetRole.id);
+        return message.reply(`✅ تم تعيين رتبة الإدارة والتحكم بنجاح إلى: ${targetRole.name}`);
+    }
+
+    // 3. أمر تعيين روم اللوق: !setlog #channel
+    if (command === '!setlog') {
+        if (!hasStaffPermission(message.member)) {
+            return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية (رتبة التحكم غير متوفرة لديك).');
         }
 
         const targetChannel = message.mentions.channels.first();
@@ -48,10 +102,10 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ تم تعيين روم السجلات بنجاح إلى: ${targetChannel}`);
     }
 
-    // 2. أمر إنشاء لوحة الحضور والتسجيل: !setup-login [رابط الصورة]
+    // 4. أمر إنشاء لوحة الحضور والتسجيل: !setup-login [رابط الصورة]
     if (command === '!setup-login') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية لاستخدام هذا الأمر.');
+        if (!hasStaffPermission(message.member)) {
+            return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية (رتبة التحكم غير متوفرة لديك).');
         }
 
         const imageUrl = args[1] || 'https://i.imgur.com/3Z61x8u.png';
@@ -84,7 +138,7 @@ client.on('messageCreate', async message => {
         try { await message.delete(); } catch (e) {}
     }
 
-    // 3. أمر عرض الإحصائيات الشخصية: !me
+    // 5. أمر عرض الإحصائيات الشخصية: !me
     if (command === '!me') {
         const targetUser = message.mentions.users.first() || message.author;
         const stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
@@ -112,7 +166,7 @@ client.on('messageCreate', async message => {
         return message.reply({ embeds: [embed] });
     }
 
-    // 4. أمر قائمة المتصدرين: !top
+    // 6. أمر قائمة المتصدرين: !top
     if (command === '!top') {
         const sortedUsers = [...userStats.entries()].sort((a, b) => b[1].totalTime - a[1].totalTime);
         const top10 = sortedUsers.slice(0, 10);
@@ -146,7 +200,6 @@ client.on('interactionCreate', async interaction => {
     const guild = interaction.guild;
     const now = Date.now();
     
-    // تحديد روم اللوق (إذا تم تعيينه عبر !setlog سيتم الإرسال فيه، وإلا فالروم الحالي)
     const logChannelId = guildLogChannels.get(guild.id);
     const logChannel = guild.channels.cache.get(logChannelId) || interaction.channel;
 
