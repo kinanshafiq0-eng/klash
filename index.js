@@ -32,11 +32,14 @@ client.on('messageCreate', async message => {
     const args = message.content.trim().split(/ +/);
     const command = args[0].toLowerCase();
 
-    // أمر إنشاء لوحة الحضور والتسجيل: !setup-login
+    // أمر إنشاء لوحة الحضور مع دعم إضافة رابط صورة: !setup-login [رابط الصورة]
     if (command === '!setup-login') {
         if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
             return message.reply('❌ عذراً، لا تمتلك الصلاحيات الكافية لاستخدام هذا الأمر.');
         }
+
+        // استخراج رابط الصورة إن وجد بعد الأمر
+        const imageUrl = args[1] || 'https://i.imgur.com/3Z61x8u.png';
 
         const embed = new EmbedBuilder()
             .setTitle('📋 KLASH LOGIN - نظام الحضور والتوثيق')
@@ -48,7 +51,7 @@ client.on('messageCreate', async message => {
                 '❤️ الرجاء الالتزام بالشرح وشكراً لكم.'
             )
             .setColor('#2b2d31')
-            .setImage('https://i.imgur.com/3Z61x8u.png')
+            .setImage(imageUrl)
             .setFooter({ text: 'عدد المسجلين حالياً: 0' });
 
         const row = new ActionRowBuilder().addComponents(
