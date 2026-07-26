@@ -25,6 +25,19 @@ const userStats = new Map();
 const guildLogChannels = new Map(); 
 const guildAllowedRoles = new Map(); 
 
+// تخصيص عناوين ونصوص البانل لكل سيرفر (افتراضي)
+const guildPanelSettings = new Map();
+
+function getPanelSettings(guildId) {
+    if (!guildPanelSettings.has(guildId)) {
+        guildPanelSettings.set(guildId, {
+            title: '📋 KLASH LOGIN - نظام الحضور والتوثيق',
+            description: 'حياكم الله جميعاً\n\nالرجاء الضغط على **تسجيل دخول** والتوجه الى البث.\nوفي حال الخروج اضغط على **تسجيل خروج**.\n\n⚠️ **تنبيه هام:** يمنع منعاً باتاً تسجيل دخول وعدم حضور البث، سيتم مراقبة السجل وفي حال ملاحظة ذلك سوف يتم معاقبة الشخص.\n\n❤️ الرجاء الالتزام بالشرح وشكراً لكم.'
+        });
+    }
+    return guildPanelSettings.get(guildId);
+}
+
 client.once(Events.ClientReady, (c) => {
     console.log(`✅ Logged in as ${c.user.tag}! Bot is ready and running.`);
 });
@@ -50,7 +63,7 @@ client.on('messageCreate', async message => {
             .addFields(
                 { 
                     name: '🛠️ أوامر الإدارة والتحكم:', 
-                    value: '`!setrole @الرتبة` - تعيين رتبة التحكم\n`!setlog` (أو `!setlog #الروم`) - تحديد روم السجلات\n`!setup-login [رابط الصورة]` - إرسال لوحة الحضور',
+                    value: '`!setrole @الرتبة` - تعيين رتبة التحكم\n`!setlog` - تحديد روم السجلات\n`!settitle [العنوان]` - تغيير عنوان البانل\n`!setdescription [النص]` - تغيير وصف البانل\n`!setup-login [رابط الصورة]` - إرسال لوحة الحضور',
                     inline: false 
                 },
                 { 
@@ -73,26 +86,47 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ تم تعيين رتبة الإدارة بنجاح: ${targetRole.name}`);
     }
 
-    // أمر تعيين روم اللوق (المحدث)
     if (command === '!setlog') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
-        
-        // إذا قام بعمل منشن لروم، يتم تعيينه، وإذا لم يعمل منشن، يتم استخدام روم الرسالة الحالية
         const targetChannel = message.mentions.channels.first() || message.channel;
         
         guildLogChannels.set(message.guild.id, targetChannel.id);
         return message.reply(`✅ تم تعيين روم السجلات (اللوق) بنجاح إلى: ${targetChannel}`);
     }
 
+    // أمر تغيير عنوان البانل: !settitle [العنوان الجديد]
+    if (command === '!settitle') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
+        const newTitle = args.slice(1).join(' ');
+        if (!newTitle) return message.reply('⚠️ يجب كتابة العنوان الجديد بعد الأمر.\nمثال: `!settitle نظام الحضور الرسمي`');
+
+        const settings = getPanelSettings(message.guild.id);
+        settings.title = newTitle;
+        return message.reply(`✅ تم تحديث عنوان البانل الافتراضي بنجاح إلى:\n**${newTitle}**`);
+    }
+
+    // أمر تغيير نص البانل: !setdescription [النص الجديد]
+    if (command === '!setdescription') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
+        const newDesc = args.slice(1).join(' ');
+        if (!newDesc) return message.reply('⚠️ يجب كتابة النص الجديد بعد الأمر.');
+
+        const settings = getPanelSettings(message.guild.id);
+        settings.description = newDesc;
+        return message.reply('✅ تم تحديث وصف البانل الافتراضي بنجاح.');
+    }
+
     if (command === '!setup-login') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
         const imageUrl = args[1] || 'https://i.imgur.com/3Z61x8u.png';
+        const settings = getPanelSettings(message.guild.id);
 
         const embed = new EmbedBuilder()
-            .setTitle('📋 KLASH LOGIN - نظام الحضور والتوثيق')
-            .setDescription('الرجاء الضغط على **تسجيل دخول** والتوجه الى البث.\nوفي حال الخروج اضغط على **تسجيل خروج**.')
+            .setTitle(settings.title)
+            .setDescription(settings.description)
             .setColor('#2b2d31')
-            .setImage(imageUrl);
+            .setImage(imageUrl)
+            .setFooter({ text: `عدد المسجلين حالياً: 0` });
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('btn_login').setLabel('تسجيل دخول').setStyle(ButtonStyle.Success),
@@ -150,6 +184,17 @@ client.on('interactionCreate', async interaction => {
         }
         activeLogins.set(user.id, now);
 
+        // تحديث رسالة البانل مباشرة لتعكس العداد الفوري في الـ Footer
+        try {
+            const message = interaction.message;
+            if (message && message.embeds[0]) {
+                const oldEmbed = message.embeds[0];
+                const updatedEmbed = EmbedBuilder.from(oldEmbed)
+                    .setFooter({ text: `عدد المسجلين حالياً: ${activeLogins.size}` });
+                await message.edit({ embeds: [updatedEmbed], components: message.components });
+            }
+        } catch (e) {}
+
         const logEmbed = new EmbedBuilder()
             .setTitle('🟢 تسجيل دخول جديد')
             .setColor('#2ecc71')
@@ -172,6 +217,17 @@ client.on('interactionCreate', async interaction => {
         stats.totalTime += sessionDurationSeconds;
         stats.count += 1;
         userStats.set(user.id, stats);
+
+        // تحديث رسالة البانل مباشرة لتعكس العداد الفوري في الـ Footer
+        try {
+            const message = interaction.message;
+            if (message && message.embeds[0]) {
+                const oldEmbed = message.embeds[0];
+                const updatedEmbed = EmbedBuilder.from(oldEmbed)
+                    .setFooter({ text: `عدد المسجلين حالياً: ${activeLogins.size}` });
+                await message.edit({ embeds: [updatedEmbed], components: message.components });
+            }
+        } catch (e) {}
 
         const logEmbed = new EmbedBuilder()
             .setTitle('🔴 تسجيل خروج')
