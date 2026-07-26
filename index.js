@@ -49,6 +49,18 @@ function hasStaffPermission(member) {
     return false;
 }
 
+// دالة لتحويل صيغة الوقت مثل 30m أو 1h إلى ثوانٍ
+function parseTimeToSeconds(timeStr) {
+    if (!timeStr) return 0;
+    const match = timeStr.match(/^(\d+)([mh])$/);
+    if (!match) return 0;
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    if (unit === 'm') return value * 60;
+    if (unit === 'h') return value * 3600;
+    return 0;
+}
+
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -63,7 +75,7 @@ client.on('messageCreate', async message => {
             .addFields(
                 { 
                     name: '🛠️ أوامر الإدارة والتحكم:', 
-                    value: '`!setrole @الرتبة` - تعيين رتبة التحكم\n`!setlog` - تحديد روم السجلات\n`!settitle [العنوان]` - تغيير عنوان البانل\n`!setdescription [النص]` - تغيير وصف البانل\n`!setup-login [رابط الصورة]` - إرسال لوحة الحضور',
+                    value: '`!setrole @الرتبة` - تعيين رتبة التحكم\n`!setlog` - تحديد روم السجلات\n`!settitle [العنوان]` - تغيير عنوان البانل\n`!setdescription [النص]` - تغيير وصف البانل\n`!setup-login [رابط الصورة]` - إرسال لوحة الحضور\n`!addtime @user [30m أو 1h]` - زيادة وقت لعضو\n`!removetime @user [15m]` - تنقيص وقت من عضو',
                     inline: false 
                 },
                 { 
@@ -94,7 +106,6 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ تم تعيين روم السجلات (اللوق) بنجاح إلى: ${targetChannel}`);
     }
 
-    // أمر تغيير عنوان البانل: !settitle [العنوان الجديد]
     if (command === '!settitle') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
         const newTitle = args.slice(1).join(' ');
@@ -105,7 +116,6 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ تم تحديث عنوان البانل الافتراضي بنجاح إلى:\n**${newTitle}**`);
     }
 
-    // أمر تغيير نص البانل: !setdescription [النص الجديد]
     if (command === '!setdescription') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
         const newDesc = args.slice(1).join(' ');
@@ -114,6 +124,46 @@ client.on('messageCreate', async message => {
         const settings = getPanelSettings(message.guild.id);
         settings.description = newDesc;
         return message.reply('✅ تم تحديث وصف البانل الافتراضي بنجاح.');
+    }
+
+    // أمر زيادة الوقت: !addtime @user 30m (أو 1h)
+    if (command === '!addtime') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
+        const targetUser = message.mentions.users.first();
+        const timeInput = args[2];
+
+        if (!targetUser || !timeInput) {
+            return message.reply('⚠️ الاستخدام الصحيح:\n`!addtime @user 30m` (للدقائق) أو `!addtime @user 1h` (للساعات)');
+        }
+
+        const secondsToAdd = parseTimeToSeconds(timeInput);
+        if (secondsToAdd <= 0) return formatSecondsError(message);
+
+        let stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        stats.totalTime += secondsToAdd;
+        userStats.set(targetUser.id, stats);
+
+        return message.reply(`✅ تم بنجاح إضافة **${timeInput}** إلى إجمالي وقت العضو ${targetUser}.`);
+    }
+
+    // أمر تنقيص الوقت: !removetime @user 15m (أو 1h)
+    if (command === '!removetime') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
+        const targetUser = message.mentions.users.first();
+        const timeInput = args[2];
+
+        if (!targetUser || !timeInput) {
+            return message.reply('⚠️ الاستخدام الصحيح:\n`!removetime @user 15m` (للدقائق) أو `!removetime @user 1h` (للساعات)');
+        }
+
+        const secondsToRemove = parseTimeToSeconds(timeInput);
+        if (secondsToRemove <= 0) return formatSecondsError(message);
+
+        let stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        stats.totalTime = Math.max(0, stats.totalTime - secondsToRemove);
+        userStats.set(targetUser.id, stats);
+
+        return message.reply(`✅ تم بنجاح خصم **${timeInput}** من إجمالي وقت العضو ${targetUser}.`);
     }
 
     if (command === '!setup-login') {
@@ -168,6 +218,10 @@ client.on('messageCreate', async message => {
     }
 });
 
+function formatSecondsError(message) {
+    return message.reply('❌ الصيغة خاطئة! يجب استخدام `m` للدقائق أو `h` للساعات.\nمثال: `30m` تعني 30 دقيقة، و `1h` تعني ساعة واحدة.');
+}
+
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
@@ -184,7 +238,6 @@ client.on('interactionCreate', async interaction => {
         }
         activeLogins.set(user.id, now);
 
-        // تحديث رسالة البانل مباشرة لتعكس العداد الفوري في الـ Footer
         try {
             const message = interaction.message;
             if (message && message.embeds[0]) {
@@ -218,7 +271,6 @@ client.on('interactionCreate', async interaction => {
         stats.count += 1;
         userStats.set(user.id, stats);
 
-        // تحديث رسالة البانل مباشرة لتعكس العداد الفوري في الـ Footer
         try {
             const message = interaction.message;
             if (message && message.embeds[0]) {
