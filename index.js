@@ -36,11 +36,11 @@ const guildTopDailyChannels = new Map();
 const guildTopWeeklyChannels = new Map();
 const guildTopMonthlyChannels = new Map();
 
-// حالة النظام لكل سيرفر (افتراضي: مغلق false أو مفتوح true)
+// حالة النظام لكل سيرفر (افتراضي: مفتوح true)
 const systemStatus = new Map(); // guildId -> boolean
 
 const guildPanelSettings = new Map();
-const activePanelMessages = new Map(); // guildId -> Message object للوحة لتحديثها باستمرار
+const activePanelMessages = new Map(); 
 
 function getPanelSettings(guildId) {
     if (!guildPanelSettings.has(guildId)) {
@@ -76,7 +76,6 @@ async function updateLivePanel(guild) {
         
         if (!loggedInList) loggedInList = 'لا يوجد أحد مسجل دخول حالياً.';
 
-        // الثيم الأحمر والأسود (اللون الأساسي أحمر داكن #8B0000 أو أسود #111111)
         const embed = new EmbedBuilder()
             .setTitle(settings.title)
             .setDescription(`${settings.description}\n\n🔴 **المسجلين الآن في البث:**\n${loggedInList}`)
@@ -97,7 +96,7 @@ async function updateLivePanel(guild) {
 client.once(Events.ClientReady, (c) => {
     console.log(`✅ Logged in as ${c.user.tag}! Bot is ready and running.`);
 
-    // تحديث اللوحات كل 5 ثوانٍ لتحديث عداد الثواني الحي للمسجلين
+    // تحديث اللوحات كل 5 ثوانٍ لعداد الثواني الحي
     setInterval(() => {
         for (const guildId of activePanelMessages.keys()) {
             const guild = client.guilds.cache.get(guildId);
@@ -105,15 +104,15 @@ client.once(Events.ClientReady, (c) => {
         }
     }, 5000);
 
-    // نظام الجدولة الزمنية الدقيقة (يومي، أسبوعي، شهري)
+    // نظام الجدولة الزمنية للتوب (يومي، أسبوعي، شهري)
     setInterval(async () => {
         const now = new Date();
         const hour = now.getHours();
         const minute = now.getMinutes();
-        const dayOfWeek = now.getDay(); // 0 = الأحد
+        const dayOfWeek = now.getDay(); 
         const dayOfMonth = now.getDate();
 
-        // 1. التوب اليومي (الساعة 12:00 منتصف الليل)
+        // 1. التوب اليومي (الساعة 12:00 منتصف الليل - 00:00)
         if (hour === 0 && minute === 0) {
             for (const [guildId, channelId] of guildTopDailyChannels.entries()) {
                 const guild = client.guilds.cache.get(guildId);
@@ -175,7 +174,7 @@ client.once(Events.ClientReady, (c) => {
     }, 60000);
 });
 
-// دوال التحقق من الصلاحيات
+// دوال الصلاحيات
 function hasStaffPermission(member) {
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
     const allowedRolesSet = guildAllowedRoles.get(member.guild.id);
@@ -272,32 +271,133 @@ client.on('messageCreate', async message => {
 
     if (command === '!help') {
         const embed = new EmbedBuilder()
-            .setTitle('📖 قائمة مساعدة البوت (ثيم أحمر وأسود)')
+            .setTitle('📖 قائمة مساعدة البوت')
             .setColor('#8B0000')
             .setDescription('إليك جميع الأوامر المتاحة:')
             .addFields(
                 { 
-                    name: '⚡ أوامر التشغيل:', 
-                    value: '`!system-on` - تشغيل النظام\n`!system-off` - إيقاف النظام وطرد المسجلين',
+                    name: '⚡ أوامر التشغيل والطرد:', 
+                    value: '`!system-on` / `!system-off` - تشغيل وإيقاف النظام\n`!force-logout @user` - طرد مود نسي تسجيل الخروج وحساب وقته',
                     inline: false 
                 },
                 { 
-                    name: '🛠️ إدارة الصلاحيات والرتب:', 
-                    value: '`!addsystemrole @Role` | `!removesystemrole @Role`\n`!addloginrole @Role` | `!removeloginrole @Role`\n`!addrole @Role` | `!removerole @Role`',
+                    name: '🛠️ تعديل الساعات (إضافة/خصم):', 
+                    value: '`!addtime @user 30m` - إضافة وقت\n`!removetime @user 15m` - خصم وقت',
                     inline: false 
                 },
                 { 
-                    name: '📊 الرومات والتقارير:', 
-                    value: '`!setlog` | `!settopdaily` | `!settopweekly` | `!settopmonthly`\n`!setup-login`',
+                    name: '🛡️ الصلاحيات والرتب:', 
+                    value: '`!addsystemrole` | `!removesystemrole`\n`!addloginrole` | `!removeloginrole`\n`!addrole` | `!removerole`',
                     inline: false 
                 },
                 { 
-                    name: '🏆 الأوامر العامة:', 
-                    value: '`!top-daily` | `!top-weekly` | `!top-monthly` | `!me`',
+                    name: '📊 التقارير والتوب:', 
+                    value: '`!top-daily` | `!top-weekly` | `!top-monthly`\n`!setup-login`',
                     inline: false 
                 }
             );
         return message.reply({ embeds: [embed] });
+    }
+
+    // أمر طرد مود أو عضو نسى تسجيل الخروج أثناء البث: !force-logout @user
+    if (command === '!force-logout') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) return.reply('⚠️ يرجى عمل منشن للعضو المراد طرده، مثال: `!force-logout @user`');
+
+        if (!activeLogins.has(targetUser.id)) {
+            return message.reply('⚠️ هذا العضو ليس مسجل دخول في اللوحة أساساً.');
+        }
+
+        const loginTime = activeLogins.get(targetUser.id);
+        const now = Date.now();
+        const sessionDurationSeconds = Math.floor((now - loginTime) / 1000);
+        activeLogins.delete(targetUser.id);
+        updateLivePanel(message.guild);
+
+        // إضافة الوقت لسجله العام واليومي والأسبوعي والشهري
+        let stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        stats.totalTime += sessionDurationSeconds;
+        stats.count += 1;
+        userStats.set(targetUser.id, stats);
+
+        let dStats = dailyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        dStats.totalTime += sessionDurationSeconds;
+        dStats.count += 1;
+        dailyStats.set(targetUser.id, dStats);
+
+        let wStats = weeklyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        wStats.totalTime += sessionDurationSeconds;
+        wStats.count += 1;
+        weeklyStats.set(targetUser.id, wStats);
+
+        let mStats = monthlyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        mStats.totalTime += sessionDurationSeconds;
+        mStats.count += 1;
+        monthlyStats.set(targetUser.id, mStats);
+
+        const logChannelId = guildLogChannels.get(message.guild.id);
+        let logChannel = message.guild.channels.cache.get(logChannelId) || message.channel;
+
+        const logEmbed = new EmbedBuilder()
+            .setTitle('⚠️ طرد قسري (تسجيل خروج إداري)')
+            .setColor('#8B0000')
+            .addFields(
+                { name: '👤 العضو', value: `${targetUser}` },
+                { name: '🛠️ بواسطة المشرف', value: `${message.author}` },
+                { name: '⏱️ المدة المحسوبة', value: formatSeconds(sessionDurationSeconds) }
+            );
+
+        try { await logChannel.send({ embeds: [logEmbed] }); } catch (e) {}
+        return message.reply(`✅ تم بنجاح طرد العضو ${targetUser} من قائمة المسجلين وحساب وقته (${formatSeconds(sessionDurationSeconds)}).`);
+    }
+
+    if (command === '!addtime') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
+        const targetUser = message.mentions.users.first();
+        const timeInput = args[2];
+        if (!targetUser || !timeInput) return message.reply('⚠️ الاستخدام: `!addtime @user 30m` أو `!addtime @user 1h`');
+
+        const seconds = parseTimeToSeconds(timeInput);
+        if (seconds <= 0) return message.reply('❌ صيغة الوقت خاطئة! استخدم `m` للدقائق أو `h` للساعات.');
+
+        let stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        stats.totalTime += seconds;
+        userStats.set(targetUser.id, stats);
+
+        let wStats = weeklyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        wStats.totalTime += seconds;
+        weeklyStats.set(targetUser.id, wStats);
+
+        let dStats = dailyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        dStats.totalTime += seconds;
+        dailyStats.set(targetUser.id, dStats);
+
+        return message.reply(`✅ تمت إضافة **${timeInput}** إلى وقت ${targetUser}.`);
+    }
+
+    if (command === '!removetime') {
+        if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
+        const targetUser = message.mentions.users.first();
+        const timeInput = args[2];
+        if (!targetUser || !timeInput) return message.reply('⚠️ الاستخدام: `!removetime @user 15m` أو `!removetime @user 1h`');
+
+        const seconds = parseTimeToSeconds(timeInput);
+        if (seconds <= 0) return message.reply('❌ صيغة الوقت خاطئة!');
+
+        let stats = userStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        stats.totalTime = Math.max(0, stats.totalTime - seconds);
+        userStats.set(targetUser.id, stats);
+
+        let wStats = weeklyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        wStats.totalTime = Math.max(0, wStats.totalTime - seconds);
+        weeklyStats.set(targetUser.id, wStats);
+
+        let dStats = dailyStats.get(targetUser.id) || { totalTime: 0, count: 0 };
+        dStats.totalTime = Math.max(0, dStats.totalTime - seconds);
+        dailyStats.set(targetUser.id, dStats);
+
+        return message.reply(`✅ تم خصم **${timeInput}** من وقت ${targetUser}.`);
     }
 
     if (command === '!addsystemrole') {
@@ -316,7 +416,7 @@ client.on('messageCreate', async message => {
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let set = guildSystemRoles.get(message.guild.id);
         if (set) set.delete(targetRole.id);
-        return message.reply(`✅ تمت إزالة الرتبة **${targetRole.name}** من أوامر النظام.`);
+        return message.reply(`✅ تمت إزالة الرتبة **${targetRole.name}**.`);
     }
 
     if (command === '!addloginrole') {
@@ -326,7 +426,7 @@ client.on('messageCreate', async message => {
         let set = guildLoginRoles.get(message.guild.id) || new Set();
         set.add(targetRole.id);
         guildLoginRoles.set(message.guild.id, set);
-        return message.reply(`✅ تمت إضافة الرتبة **${targetRole.name}** لتصبح مسموحة بتسجيل الدخول.`);
+        return message.reply(`✅ تمت إضافة الرتبة **${targetRole.name}** لرتب تسجيل الدخول.`);
     }
 
     if (command === '!removeloginrole') {
@@ -335,7 +435,7 @@ client.on('messageCreate', async message => {
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let set = guildLoginRoles.get(message.guild.id);
         if (set) set.delete(targetRole.id);
-        return message.reply(`✅ تمت إزالة الرتبة **${targetRole.name}** من رتب تسجيل الدخول.`);
+        return message.reply(`✅ تمت إزالة الرتبة **${targetRole.name}**.`);
     }
 
     if (command === '!setrole') {
@@ -346,7 +446,7 @@ client.on('messageCreate', async message => {
         rolesSet.clear();
         rolesSet.add(targetRole.id);
         guildAllowedRoles.set(message.guild.id, rolesSet);
-        return message.reply(`✅ تعيين رتبة التحكم الرئيسية: ${targetRole.name}`);
+        return message.reply(`✅ تعيين الرتبة الرئيسية: ${targetRole.name}`);
     }
 
     if (command === '!addrole') {
@@ -356,7 +456,7 @@ client.on('messageCreate', async message => {
         let rolesSet = guildAllowedRoles.get(message.guild.id) || new Set();
         rolesSet.add(targetRole.id);
         guildAllowedRoles.set(message.guild.id, rolesSet);
-        return message.reply(`✅ إضافة الرتبة **${targetRole.name}** لقائمة الإدارة.`);
+        return message.reply(`✅ إضافة الرتبة **${targetRole.name}**.`);
     }
 
     if (command === '!removerole') {
@@ -365,35 +465,35 @@ client.on('messageCreate', async message => {
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let rolesSet = guildAllowedRoles.get(message.guild.id);
         if (rolesSet) rolesSet.delete(targetRole.id);
-        return message.reply(`✅ إزالة الرتبة **${targetRole.name}** من القائمة.`);
+        return message.reply(`✅ إزالة الرتبة **${targetRole.name}**.`);
     }
 
     if (command === '!setlog') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
-        const targetChannel = message.mentions.channels.first() || message.channel;
-        guildLogChannels.set(message.guild.id, targetChannel.id);
-        return message.reply(`✅ تم تعيين روم السجلات إلى: ${targetChannel}`);
+        const ch = message.mentions.channels.first() || message.channel;
+        guildLogChannels.set(message.guild.id, ch.id);
+        return message.reply(`✅ تم تعيين روم السجلات: ${ch}`);
     }
 
     if (command === '!settopdaily') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
         const ch = message.mentions.channels.first() || message.channel;
         guildTopDailyChannels.set(message.guild.id, ch.id);
-        return message.reply(`✅ تم تعيين روم التوب اليومي (يُترست 00:00 منتصف الليل): ${ch}`);
+        return message.reply(`✅ تم تعيين روم التوب اليومي: ${ch}`);
     }
 
     if (command === '!settopweekly') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
         const ch = message.mentions.channels.first() || message.channel;
         guildTopWeeklyChannels.set(message.guild.id, ch.id);
-        return message.reply(`✅ تم تعيين روم التوب الأسبوعي (يُترست الأحد 00:00 منتصف الليل): ${ch}`);
+        return message.reply(`✅ تم تعيين روم التوب الأسبوعي: ${ch}`);
     }
 
     if (command === '!settopmonthly') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات.');
         const ch = message.mentions.channels.first() || message.channel;
         guildTopMonthlyChannels.set(message.guild.id, ch.id);
-        return message.reply(`✅ تم تعيين روم التوب الشهري (يُترست أول يوم بالشهر 00:00 منتصف الليل): ${ch}`);
+        return message.reply(`✅ تم تعيين روم التوب الشهري: ${ch}`);
     }
 
     if (command === '!setup-login') {
@@ -408,7 +508,6 @@ client.on('messageCreate', async message => {
             .setImage(imageUrl)
             .setFooter({ text: `حالة النظام: مفتوح ✅ | عدد المسجلين: 0` });
 
-        // الأزرار باللونين الأحمر والأسود
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('btn_login').setLabel('تسجيل دخول').setStyle(ButtonStyle.Danger),
             new ButtonBuilder().setCustomId('btn_logout').setLabel('تسجيل خروج').setStyle(ButtonStyle.Secondary)
@@ -462,7 +561,7 @@ client.on('messageCreate', async message => {
     }
 });
 
-// التفاعل مع الأزرار للوحة الحضور
+// التعامل مع أزرار اللوحة التفاعلية
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
 
@@ -472,7 +571,7 @@ client.on('interactionCreate', async interaction => {
     const now = Date.now();
 
     if (systemStatus.get(guild.id) === false) {
-        return interaction.reply({ content: '❌ نظام الحضور مغلق حالياً من قِبل الإدارة، لا يمكن تسجيل الدخول أو الخروج.', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: '❌ نظام الحضور مغلق حالياً من قِبل الإدارة.', flags: [MessageFlags.Ephemeral] });
     }
 
     if (member && !canLoginMember(member)) {
