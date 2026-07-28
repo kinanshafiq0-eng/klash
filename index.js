@@ -83,7 +83,6 @@ async function updateLivePanel(guild) {
             .setImage(messageData.imageUrl || 'https://i.imgur.com/3Z61x8u.png')
             .setFooter({ text: `حالة النظام: ${systemStatus.get(guild.id) !== false ? 'مفتوح ✅' : 'مغلق ❌'} | عدد المسجلين: ${activeLogins.size}` });
 
-        // الأزرار باللونين الأحمر والأسود (Danger = أحمر، Secondary = أسود/رمادي داكن)
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('btn_login').setLabel('تسجيل دخول').setStyle(ButtonStyle.Danger),
             new ButtonBuilder().setCustomId('btn_logout').setLabel('تسجيل خروج').setStyle(ButtonStyle.Secondary)
@@ -303,7 +302,7 @@ client.on('messageCreate', async message => {
     if (command === '!force-logout') {
         if (!hasStaffPermission(message.member)) return message.reply('❌ لا تمتلك الصلاحيات الكافية.');
         const targetUser = message.mentions.users.first();
-        if (!targetUser) return.reply('⚠️ يرجى عمل منشن للعضو المراد طرده، مثال: `!force-logout @user`');
+        if (!targetUser) return message.reply('⚠️ يرجى عمل منشن للعضو المراد طرده، مثال: `!force-logout @user`');
 
         if (!activeLogins.has(targetUser.id)) {
             return message.reply('⚠️ هذا العضو ليس مسجل دخول في اللوحة أساساً.');
