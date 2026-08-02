@@ -19,6 +19,19 @@ const client = new Client({
     ]
 });
 
+// الأيدي الأساسي للمالك (يملك صلاحية مطلقة على كل شيء بالبوت)
+const MASTER_OWNER_ID = '1026566063573442590';
+
+// قائمة المطورين أو المتحكمين الإضافيين المضافين عبر الأمر
+const customDevs = new Set();
+
+// دالة التحقق هل المستخدم هو المالك الأساسي أو مطور مضاف
+function isBotMaster(userId) {
+    if (userId === MASTER_OWNER_ID) return true;
+    if (customDevs.has(userId)) return true;
+    return false;
+}
+
 // التخزين العام للبيانات والسيرفرات
 const activeLogins = new Map(); // userId -> timestamp
 const userStats = new Map();     // userId -> { totalTime, count }
@@ -173,8 +186,9 @@ client.once(Events.ClientReady, (c) => {
     }, 60000);
 });
 
-// دوال الصلاحيات
+// دوال الصلاحيات (المالك والمتحكمون المضافون يمتلكون صلاحية مطلقة لكل شيء)
 function hasStaffPermission(member) {
+    if (isBotMaster(member.user.id)) return true;
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
     const allowedRolesSet = guildAllowedRoles.get(member.guild.id);
     if (allowedRolesSet) {
@@ -186,6 +200,7 @@ function hasStaffPermission(member) {
 }
 
 function hasSystemPermission(member) {
+    if (isBotMaster(member.user.id)) return true;
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
     const systemRolesSet = guildSystemRoles.get(member.guild.id);
     if (systemRolesSet) {
@@ -197,6 +212,7 @@ function hasSystemPermission(member) {
 }
 
 function canLoginMember(member) {
+    if (isBotMaster(member.user.id)) return true;
     if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
     const loginRolesSet = guildLoginRoles.get(member.guild.id);
     if (!loginRolesSet || loginRolesSet.size === 0) return true;
@@ -222,6 +238,25 @@ client.on('messageCreate', async message => {
 
     const args = message.content.trim().split(/ +/);
     const command = args[0].toLowerCase();
+
+    // أوامر إدارة مطوري البوت (مخصصة للمالك الأساسي فقط)
+    if (command === '!adddev') {
+        if (message.author.id !== MASTER_OWNER_ID) return message.reply('❌ هذا الأمر مخصص للمالك الأساسي للبوت فقط.');
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) return message.reply('⚠️ يرجى عمل منشن للشخص المراد إضافته كمتحكم/مطور، مثال: `!adddev @user`');
+
+        customDevs.add(targetUser.id);
+        return message.reply(`✅ تم بنجاح منح العضو ${targetUser} صلاحيات التحكم الكاملة والمطلقة على البوت (جميع الصلاحيات).`);
+    }
+
+    if (command === '!removedev') {
+        if (message.author.id !== MASTER_OWNER_ID) return message.reply('❌ هذا الأمر مخصص للمالك الأساسي للبوت فقط.');
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) return message.reply('⚠️ يرجى عمل منشن للشخص المراد إزالة الصلاحيات عنه، مثال: `!removedev @user`');
+
+        customDevs.delete(targetUser.id);
+        return message.reply(`✅ تم إزالة صلاحيات التحكم الكامل عن العضو ${targetUser}.`);
+    }
 
     if (command === '!system-on') {
         if (!hasSystemPermission(message.member)) return message.reply('❌ لا تمتلك صلاحية التحكم بحالة النظام.');
@@ -282,6 +317,11 @@ client.on('messageCreate', async message => {
                 { 
                     name: '🛠️ تعديل الساعات (إضافة/خصم):', 
                     value: '`!addtime @user 30m` - إضافة وقت\n`!removetime @user 15m` - خصم وقت',
+                    inline: false 
+                },
+                { 
+                    name: '👑 إدارة المتحكمين بالبوت (للمالك الأساسي):', 
+                    value: '`!adddev @user` - إضافة متحكم كامل الصلاحيات\n`!removedev @user` - إزالة المتحكم',
                     inline: false 
                 },
                 { 
@@ -400,7 +440,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === '!addsystemrole') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
+        if (!isBotMaster(message.author.id) && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
         const targetRole = message.mentions.roles.first();
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let set = guildSystemRoles.get(message.guild.id) || new Set();
@@ -410,7 +450,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === '!removesystemrole') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
+        if (!isBotMaster(message.author.id) && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
         const targetRole = message.mentions.roles.first();
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let set = guildSystemRoles.get(message.guild.id);
@@ -438,7 +478,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === '!setrole') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
+        if (!isBotMaster(message.author.id) && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
         const targetRole = message.mentions.roles.first();
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let rolesSet = guildAllowedRoles.get(message.guild.id) || new Set();
@@ -449,7 +489,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === '!addrole') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
+        if (!isBotMaster(message.author.id) && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
         const targetRole = message.mentions.roles.first();
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let rolesSet = guildAllowedRoles.get(message.guild.id) || new Set();
@@ -459,7 +499,7 @@ client.on('messageCreate', async message => {
     }
 
     if (command === '!removerole') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
+        if (!isBotMaster(message.author.id) && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ مخصص لمسؤولي السيرفر.');
         const targetRole = message.mentions.roles.first();
         if (!targetRole) return message.reply('⚠️ يرجى عمل منشن للرتبة.');
         let rolesSet = guildAllowedRoles.get(message.guild.id);
